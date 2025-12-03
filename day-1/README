@@ -1,0 +1,20 @@
+https://adventofcode.com/2025/day/1
+
+Objects:
+- Dial -- modulo counter
+
+Dial Ops:
+- left
+- right
+- is_zero -> bool
+
+main driver:
+- init zero-counter -> 0
+- open file
+- while file {
+-- read line
+-- parse line
+-- operate dial
+-- check dial and increment count
+- }
+- report
