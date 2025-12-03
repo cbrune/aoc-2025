@@ -55,6 +55,66 @@ impl Dial {
     }
 }
 
+#[derive(Debug)]
+enum Op {
+    Left(usize),
+    Right(usize),
+}
+
+struct OpReader {
+    lines: io::Lines<io::BufReader<File>>,
+}
+
+impl OpReader {
+    fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let file = File::open(path)?;
+        let lines = io::BufReader::new(file).lines();
+        Ok(Self { lines })
+    }
+}
+
+impl Iterator for OpReader {
+    type Item = Op;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.lines.next().map(|line| {
+            // pop 1st character
+            let line = line.expect("Bad string");
+            // println!("Line: {line}");
+            let (op_str, click_str) = line.split_at(1);
+            let clicks: usize = click_str.parse().expect("Bad integer string: {click_str}");
+            if op_str == "R" {
+                Op::Right(clicks)
+            } else if op_str == "L" {
+                Op::Left(clicks)
+            } else {
+                panic!("Unknown operation: {op_str}");
+            }
+        })
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let input_file = std::env::args().nth(1).expect("Error: no file given");
+    println!("Using file: {input_file}");
+
+    let mut dial = Dial::default();
+
+    let ops = OpReader::new(&input_file)?;
+
+    for op in ops {
+        println!("Op: {op:?}");
+        match op {
+            Op::Left(clicks) => dial.left(clicks),
+            Op::Right(clicks) => dial.right(clicks),
+        }
+        println!("After dial: {dial:?}");
+    }
+
+    println!("Dial zero landings: {}", dial.landings());
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -207,64 +267,4 @@ mod test {
         assert!(dial.is_zero());
         assert_eq!(dial.landings(), 7);
     }
-}
-
-#[derive(Debug)]
-enum Op {
-    Left(usize),
-    Right(usize),
-}
-
-struct OpReader {
-    lines: io::Lines<io::BufReader<File>>,
-}
-
-impl OpReader {
-    fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let file = File::open(path)?;
-        let lines = io::BufReader::new(file).lines();
-        Ok(Self { lines })
-    }
-}
-
-impl Iterator for OpReader {
-    type Item = Op;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.lines.next().map(|line| {
-            // pop 1st character
-            let line = line.expect("Bad string");
-            // println!("Line: {line}");
-            let (op_str, click_str) = line.split_at(1);
-            let clicks: usize = click_str.parse().expect("Bad integer string: {click_str}");
-            if op_str == "R" {
-                Op::Right(clicks)
-            } else if op_str == "L" {
-                Op::Left(clicks)
-            } else {
-                panic!("Unknown operation: {op_str}");
-            }
-        })
-    }
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let input_file = std::env::args().nth(1).expect("Error: no file given");
-    println!("Using file: {input_file}");
-
-    let mut dial = Dial::default();
-
-    let ops = OpReader::new(&input_file)?;
-
-    for op in ops {
-        println!("Op: {op:?}");
-        match op {
-            Op::Left(clicks) => dial.left(clicks),
-            Op::Right(clicks) => dial.right(clicks),
-        }
-        println!("After dial: {dial:?}");
-    }
-
-    println!("Dial zero landings: {}", dial.landings());
-
-    Ok(())
 }
