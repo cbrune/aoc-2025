@@ -1,0 +1,46 @@
+https://adventofcode.com/2025/day/2
+
+The ranges are _inclusive_.
+
+Invalid IDs consist of some sequence (1 or greater) of digits repeated
+twice.
+
+Examples:
+- 55
+- 6464
+- 123123
+
+No leading 0.
+
+From the "twice" part, bad IDs must have an even number of digits.
+- filter out all the IDs with an odd number of digits.
+
+From the remain set, divide the string into two halves.
+If the two halves are equal, it is a BAD ID.
+
+Things to check / optimizations:
+
+- do the two ends of the range have the same number of digits?
+
+- divide ranges into contiguous ranges of the same number of digits,
+  dropping the odd lenght ranges.
+
+break the big range into workable ranges, defined by the number of digits in start, end
+
+start_len
+end_len
+
+start1 = start0
+end1 = start0 + max that stays in the same length
+start2 = end1 + 1 (first number in the next string length)
+end2 = end0
+
+
+Parsing:
+
+- Read input file into a Vec<Range<usize>>
+- Create an iterator that produces ranges from the input file
+
+Objects:
+
+- a StrRange (start and end as strings ....)
