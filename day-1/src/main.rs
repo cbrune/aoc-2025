@@ -102,12 +102,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ops = OpReader::new(&input_file)?;
 
     for op in ops {
-        println!("Op: {op:?}");
+        // println!("Op: {op:?}");
         match op {
             Op::Left(clicks) => dial.left(clicks),
             Op::Right(clicks) => dial.right(clicks),
         }
-        println!("After dial: {dial:?}");
+        // println!("After dial: {dial:?}");
     }
 
     println!("Dial zero landings: {}", dial.landings());
