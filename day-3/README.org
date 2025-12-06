@@ -1,0 +1,12 @@
+Day 3
+-----
+
+- scan the digits, looking for the max, noting it's position
+- need to record both it's value and position
+
+scan digits into a vector, from the left.
+
+part 2
+------
+
+
