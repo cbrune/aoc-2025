@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Display};
 use std::fs::File;
 use std::io::{self, BufRead};
 
@@ -15,6 +16,80 @@ struct Problem {
 
 #[derive(Debug, Clone)]
 struct Problems(Vec<Problem>);
+
+/// The outer vector is columns
+/// The inner vector is rows
+#[derive(Clone)]
+struct NumberBlock {
+    data: Vec<Vec<Option<usize>>>,
+}
+
+impl NumberBlock {
+    fn new(col_width: usize, n_rows: usize) -> Self {
+        let mut data = Vec::new();
+
+        for _ in 0..col_width {
+            let rows = vec![None; n_rows];
+            data.push(rows);
+        }
+
+        Self { data }
+    }
+
+    fn set(&mut self, row: usize, col: usize, val: usize) {
+        let row_data = &mut self.data[col];
+        row_data[row] = Some(val);
+    }
+
+    fn get(&self, row: usize, col: usize) -> Option<usize> {
+        let row_data = &self.data[col];
+        // println!("get: ({row}, {col}): {:?}", row_data[row]);
+        row_data[row]
+    }
+
+    // convert column of digits into a number
+    fn col_num(&self, col: usize) -> usize {
+        let n_rows = self.data[col].len();
+        let mut value = 0;
+        let mut n_idx = 0;
+        for i in 0..n_rows {
+            let idx = n_rows - i - 1;
+            if let Some(digit) = self.get(idx, col) {
+                value += 10usize.pow(n_idx) * digit;
+                n_idx += 1;
+            }
+        }
+        value
+    }
+
+    fn operands(&self) -> Vec<usize> {
+        let mut operands = Vec::new();
+        for i in 0..self.data.len() {
+            operands.push(self.col_num(i));
+        }
+        operands
+    }
+}
+
+impl Display for NumberBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n_rows = self.data[0].len();
+        for i in 0..n_rows {
+            for j in 0..self.data.len() {
+                write!(f, "{:?} ", self.get(i, j))?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl Debug for NumberBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)?;
+        Ok(())
+    }
+}
 
 impl Problems {
     fn parse1(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -51,7 +126,7 @@ impl Problems {
                         panic!("Bad operator: {elem}");
                     };
                     // found entire problem
-                    println!("Found prob: {}, len {}, {op:?}", i, cols[i].len());
+                    // println!("Found prob: {}, len {}, {op:?}", i, cols[i].len());
                     problems.push(Problem {
                         operands: cols[i].clone(),
                         op,
@@ -77,18 +152,17 @@ impl Problems {
             let mut in_op = false;
             let mut col_start = 0;
             for (i, c) in prob_str.chars().enumerate() {
-                println!("row: >{prob_str}<");
-                println!("i:{i} : |{c}|");
+                // println!("row: >{prob_str}<");
+                // println!("i:{i} : |{c}|");
                 if c == '*' || c == '+' {
+                    // last row, gather positions
                     if in_op {
                         // push out previous
-                        println!("Pushing out ({col_start}, {i})");
+                        // println!("Pushing out ({col_start}, {i})");
                         cols.push((col_start, i));
                     }
                     in_op = true;
                     col_start = i;
-                    // last row, gather positions
-                    // cols.push(i);
                     if c == '*' {
                         ops.push(Op::Multiply);
                     } else if c == '+' {
@@ -98,7 +172,7 @@ impl Problems {
             }
             // push out last col
             if in_op {
-                println!("Pushing out last ({col_start}, {})", prob_str.len());
+                // println!("Pushing out last ({col_start}, {})", prob_str.len());
                 cols.push((col_start, prob_str.len() + 1));
             }
             nrows += 1;
@@ -110,17 +184,13 @@ impl Problems {
     fn parse2(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let (ops, nrows, col_widths) = Self::scan(path)?;
         let ncols = ops.len();
-        println!("ops: {ops:?}, ncols: {ncols}, nrows: {nrows}, col_widths: {col_widths:?}");
+        // println!("ops: {ops:?}, ncols: {ncols}, nrows: {nrows}, col_widths: {col_widths:?}");
 
         let file = File::open(path)?;
         let lines = io::BufReader::new(file).lines();
         let mut cols = Vec::new();
         for i in 0..ncols {
-            let mut col = Vec::new();
-            for _ in 0..nrows {
-                let width = col_widths[i].1 - col_widths[i].0 - 1;
-                col.push(vec![0; width]);
-            }
+            let col = NumberBlock::new(col_widths[i].1 - col_widths[i].0 - 1, nrows);
             cols.push(col);
         }
 
@@ -130,8 +200,7 @@ impl Problems {
                 break;
             }
             let problem_str = line?;
-            println!("row: {row_idx}, {problem_str}");
-            // println!("cols: {cols:?}");
+            // println!("row: {row_idx}, {problem_str}");
             let mut col_idx = 0;
             let mut col_start = col_widths[col_idx].0;
             let mut col_end = col_widths[col_idx].1 - 1;
@@ -141,7 +210,6 @@ impl Problems {
                     col_start = col_widths[col_idx].0;
                     col_end = col_widths[col_idx].1 - 1;
                 }
-                println!("i: {i}, col_end: {col_end}");
                 if i == col_end {
                     // should be separator space
                     if c != ' ' {
@@ -151,45 +219,36 @@ impl Problems {
                 }
 
                 let cell_idx = i - col_start;
-                println!("i: {i}, col_idx: {col_idx}, row_idx: {row_idx}, cell_idx: {cell_idx}");
-                println!("before: i: {i}, col_idx: {col_idx}: {:?}", cols[col_idx]);
-                let col = &mut cols[col_idx];
-                let cell = &mut col[row_idx];
-                cell[cell_idx] = if c == ' ' {
-                    0
-                } else {
-                    c.to_digit(10).expect("bad digit") as usize
-                };
-                println!("after : i: {i}, col_idx: {col_idx}: {:?}", cols[col_idx]);
+                // println!("i: {i}, col_idx: {col_idx}, row_idx: {row_idx}, cell_idx: {cell_idx}");
+                // println!("before: i: {i}, col_idx: {col_idx}: {}", cols[col_idx]);
+                if c != ' ' {
+                    let col = &mut cols[col_idx];
+                    let val = c.to_digit(10).expect("bad digit") as usize;
+
+                    col.set(row_idx, cell_idx, val);
+                }
+                // println!("after : i: {i}, col_idx: {col_idx}: {}", cols[col_idx]);
             }
         }
 
+        // println!("cols: {:?}", cols);
         // mush the rows/cells into problem values
         let mut problems = Vec::new();
         for (i, col) in cols.iter().enumerate() {
-            //            for (j, cell) in col.iter().enumerate() {
-            println!("col: {i}: {:?}", col);
-            let mut values = vec![0; col.len()];
-            for k in 0..col.len() {
-                let idx = col.len() - 1 - k;
-                println!("col: {i}:{k}: {:?}", col[idx]);
-                for (j, d) in col[idx].iter().enumerate() {
-                    println!("j:{j}, k:{k}, d:{d}");
-                    values[j] += 10usize.pow(k as u32) * d;
-                }
-            }
+            let operands = col.operands();
             problems.push(Problem {
-                operands: values,
+                operands,
                 op: ops[i],
             });
         }
+        // println!("Problems: {:?}", problems);
         Ok(Problems(problems))
     }
 }
 
 fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     let problems = Problems::parse1(prob_file)?;
-    println!("Found problems: {problems:?}");
+    // println!("Found problems: {problems:?}");
 
     let mut total = 0;
     for problem in &problems.0 {
@@ -204,7 +263,7 @@ fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
 
 fn prob2(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     let problems = Problems::parse2(prob_file)?;
-    println!("Found problems: {problems:?}");
+    // println!("Found problems: {problems:?}");
 
     let mut total = 0;
     for problem in &problems.0 {
