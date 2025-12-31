@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BinaryHeap, HashSet};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, BufRead};
@@ -81,16 +81,24 @@ impl std::cmp::Ord for JunkBoxPair {
 #[derive(Debug, Default, Clone)]
 struct Circuits {
     circuits: Vec<HashSet<JunkBox>>,
+    max: usize,
 }
 
 impl Circuits {
+    fn new(max: usize) -> Self {
+        Self {
+            circuits: Default::default(),
+            max,
+        }
+    }
+
     fn add(&mut self, pair: (JunkBox, JunkBox)) -> bool {
         let mut p0_circuit = None;
         let mut p1_circuit = None;
         for (i, circuit) in self.circuits.iter_mut().enumerate() {
             if circuit.contains(&pair.0) && circuit.contains(&pair.1) {
                 // nothing to do
-                println!("Skipping pair: {pair:?}, already in {circuit:?}");
+                // println!("Skipping pair: {pair:?}, already in {circuit:?}");
                 return false;
             }
             if circuit.contains(&pair.0) {
@@ -109,17 +117,11 @@ impl Circuits {
 
         match (p0_circuit, p1_circuit) {
             (Some(i), None) => {
-                println!(
-                    "Adding jb:{:?} to circuit:{i}:{:?}",
-                    pair.1, self.circuits[i]
-                );
+                // println!("Adding jb:{:?} to circuit:{i}", pair.1);
                 let _ = self.circuits[i].insert(pair.1);
             }
             (None, Some(i)) => {
-                println!(
-                    "Adding jb:{:?} to circuit:{i}:{:?}",
-                    pair.0, self.circuits[i]
-                );
+                // println!("Adding jb:{:?} to circuit:{i}", pair.0);
                 let _ = self.circuits[i].insert(pair.0);
             }
             (Some(i), Some(j)) => {
@@ -142,8 +144,14 @@ impl Circuits {
                 self.circuits.push(circuit);
             }
         }
-        // pair added to circuit collection
-        true
+
+        if self.circuits.len() == 1 && self.circuits[0].len() == self.max {
+            // found the maximal circuit
+            println!("circuit.add(): found maximal circuit");
+            true
+        } else {
+            false
+        }
     }
 
     fn total(&self) -> usize {
@@ -158,12 +166,16 @@ impl Circuits {
         // println!("sizes: {sizes:?}");
         sizes[0] * sizes[1] * sizes[2]
     }
+
+    fn len(&self) -> usize {
+        self.circuits.len()
+    }
 }
 
-fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
+fn data_init(
+    prob_file: &str,
+) -> Result<(Vec<JunkBox>, BinaryHeap<JunkBoxPair>), Box<dyn std::error::Error>> {
     let junkbox_reader = JunkBoxReader::new(prob_file)?;
-
-    let n_connections = if prob_file == "sample.txt" { 10 } else { 1000 };
 
     let mut junkboxes = Vec::new();
     for junkbox in junkbox_reader {
@@ -191,6 +203,13 @@ fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
         }
     }
 
+    Ok((junkboxes, junkbox_dists))
+}
+
+fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let (_junkboxes, mut junkbox_dists) = data_init(prob_file)?;
+    let n_connections = if prob_file == "sample.txt" { 10 } else { 1000 };
+
     let mut circuits = Circuits::default();
     let mut i = n_connections;
     while junkbox_dists.len() > 0 && i > 0 {
@@ -205,8 +224,50 @@ fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     Ok(total)
 }
 
+fn remove_junkbox(junkboxes: &mut Vec<JunkBox>, junkbox: JunkBox) {
+    for i in 0..junkboxes.len() {
+        if junkboxes[i].id == junkbox.id {
+            junkboxes.remove(i);
+            break;
+        }
+    }
+    // not found is OK and  expected ...
+}
+
 fn prob2(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
-    Ok(0)
+    let (junkboxes, mut junkbox_dists) = data_init(prob_file)?;
+
+    let mut junkbox_ids = HashSet::new();
+    for jb in &junkboxes {
+        junkbox_ids.insert(jb.id);
+    }
+
+    let mut circuits = Circuits::new(junkboxes.len());
+    // pop pairs until all junkboxes are in _some_ circuit
+    let mut dist = 0;
+    while junkbox_ids.len() > 0 {
+        let jbp = junkbox_dists.pop().expect("Unexpected None entry");
+        // println!("jbp: {jbp:?}");
+        if circuits.add((jbp.j1, jbp.j2)) {
+            // found the maximal circuit
+            dist = jbp.j1.location.0 * jbp.j2.location.0;
+            break;
+        }
+        junkbox_ids.remove(&jbp.j1.id);
+        junkbox_ids.remove(&jbp.j2.id);
+        //        remove_junkbox(&mut junkboxes, jbp.j1);
+        //        remove_junkbox(&mut junkboxes, jbp.j2);
+    }
+    println!("Found dist: {dist}");
+    println!(
+        "after: jb.len(): {}, jbd.len(): {}, circuits.len(): {}",
+        junkboxes.len(),
+        junkbox_dists.len(),
+        circuits.len()
+    );
+    println!("circuits: {:?}", circuits);
+
+    Ok(dist as usize)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -234,6 +295,6 @@ mod test {
 
     #[test]
     fn check_prob2() {
-        assert_eq!(prob2("sample.txt").unwrap(), 40);
+        assert_eq!(prob2("sample.txt").unwrap(), 25272);
     }
 }
