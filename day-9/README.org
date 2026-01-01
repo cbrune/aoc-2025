@@ -1,1 +1,15 @@
-- how to model area...
+part2:
+
+- like part1, generate all the possible rectangles
+- filter that list by testing if the rect intersects any of the line segments...
+- if it intersects, it is out.
+
+- all 4 corners touch _some_ line segment of the boundary....
+- by definition at least 2 corner do, need to test the other 2.
+
+- test if point is "on right hand side" for all segments in list?
+-- need direction p0 -> p1
+
+X - during boundary creation, concate segments that are in the same
+    direction.
+

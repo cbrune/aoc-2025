@@ -3,14 +3,12 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, BufRead};
 
-#[derive(Debug, Clone, Copy)]
-struct TilePoint {
-    id: usize,
-    location: (usize, usize),
-}
+use geo::{Contains, Intersects};
+use geo_types::{point, LineString, Polygon};
+use inpoly::inpoly2;
+use ndarray::{arr2, Array, Array2, ArrayView};
 
 struct TilePointReader {
-    count: usize,
     lines: io::Lines<io::BufReader<File>>,
 }
 
@@ -18,12 +16,12 @@ impl TilePointReader {
     fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let file = File::open(path)?;
         let lines = io::BufReader::new(file).lines();
-        Ok(Self { count: 0, lines })
+        Ok(Self { lines })
     }
 }
 
 impl Iterator for TilePointReader {
-    type Item = TilePoint;
+    type Item = (f64, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.lines.next().map(|line| {
@@ -32,52 +30,51 @@ impl Iterator for TilePointReader {
             if coord_strs.len() != 2 {
                 panic!("Bad tile point string: {line_str}");
             }
-            let x = coord_strs[0].parse::<usize>().expect("Bad X coord");
-            let y = coord_strs[1].parse::<usize>().expect("Bad Y coord");
-            let item = TilePoint {
-                id: self.count,
-                location: (x, y),
-            };
-            self.count += 1;
-            item
+            let x = coord_strs[0].parse::<f64>().expect("Bad X coord");
+            let y = coord_strs[1].parse::<f64>().expect("Bad Y coord");
+            (x, y)
         })
     }
 }
 
-fn data_init(prob_file: &str) -> Result<Vec<TilePoint>, Box<dyn std::error::Error>> {
+fn data_init(prob_file: &str) -> Result<Array2<f64>, Box<dyn std::error::Error>> {
     let tile_point_reader = TilePointReader::new(prob_file)?;
 
-    let mut points = Vec::new();
-    for tile_point in tile_point_reader {
+    let mut array = Array::zeros((0, 2));
+    for (x, y) in tile_point_reader {
         // println!("tp: {tile_point:?}");
-        points.push(tile_point);
+        array.push_row(ArrayView::from(&[x, y])).unwrap();
     }
-    Ok(points)
+
+    Ok(array)
 }
 
-fn delta(p0: usize, p1: usize) -> usize {
+fn delta(p0: f64, p1: f64) -> f64 {
     // the delta is inclusive of the end point
     if p0 < p1 {
-        p1 - p0 + 1
+        p1 - p0 + 1.
     } else {
-        p0 - p1 + 1
+        p0 - p1 + 1.
     }
 }
 
-fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
-    let points = data_init(prob_file)?;
-    let mut max_area = 0;
+fn prob1(prob_file: &str) -> Result<f64, Box<dyn std::error::Error>> {
+    let array = data_init(prob_file)?;
+    let mut max_area = 0.;
+    //    println!("array: {array:?}");
 
-    for i in 0..(points.len() - 1) {
-        for j in (i + 1)..points.len() {
-            let p1 = &points[i];
-            let p2 = &points[j];
-            let delta_x = delta(p1.location.0, p2.location.0);
-            let delta_y = delta(p1.location.1, p2.location.1);
+    for i in 0..(array.nrows() - 1) {
+        for j in (i + 1)..array.nrows() {
+            let x0 = array[[i, 0]];
+            let y0 = array[[i, 1]];
+            let x1 = array[[j, 0]];
+            let y1 = array[[j, 1]];
+            let delta_x = delta(x0, x1);
+            let delta_y = delta(y0, y1);
             let area = delta_x * delta_y;
             // println!("Area: {area}, p1:{p1:?}, p2:{p2:?}");
             if area > max_area {
-                println!("  Found new max: {area}");
+                // println!("  Found new max: {area}");
                 max_area = area;
             }
         }
@@ -86,42 +83,169 @@ fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     Ok(max_area)
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Line {
-    p0: TilePoint,
-    p1: TilePoint,
+fn prob2(prob_file: &str) -> Result<f64, Box<dyn std::error::Error>> {
+    let array = data_init(prob_file)?;
+    let mut max_area = 0.;
+    //    println!("array: {array:?}");
+
+    //    let total_calcs = array.nrows() * (array.nrows() - 1);
+    //    println!("Total calcs: {total_calcs}");
+    let mut iter = 0;
+    let mut areas = Vec::new();
+    for i in 0..(array.nrows() - 1) {
+        for j in (i + 1)..array.nrows() {
+            //            if (iter % 1000) == 0 {
+            //                println!("Calc: {iter}/{total_calcs}");
+            //            }
+            //            iter += 1;
+            let x0 = array[[i, 0]];
+            let y0 = array[[i, 1]];
+            let x1 = array[[j, 0]];
+            let y1 = array[[j, 1]];
+
+            let delta_x = delta(x0, x1);
+            let delta_y = delta(y0, y1);
+            let area = delta_x * delta_y;
+            areas.push((x0, y0, x1, y1, area));
+        }
+    }
+
+    areas.sort_by(|a, b| {
+        let (_, _, _, _, a1) = a;
+        let (_, _, _, _, b1) = b;
+        let a1 = *a1 as usize;
+        let b1 = *b1 as usize;
+        b1.cmp(&a1)
+    });
+
+    //println!("areas: {areas:?}");
+
+    //    let total_calcs = areas.len();
+    //    let mut iter = 0;
+    //    println!("Total calcs2: {total_calcs}");
+    for (x0, y0, x1, y1, area) in areas {
+        //        if (iter % 1000) == 0 {
+        //            println!("Calc: {iter}/{total_calcs}");
+        //        }
+        //        iter += 1;
+        // test if rectangle defined by points is inside the boundary
+        // create array of points to check
+        let mut rect = Array::zeros((0, 2));
+        rect.push_row(ArrayView::from(&[x0, y0])).unwrap();
+        rect.push_row(ArrayView::from(&[x0, y1])).unwrap();
+        rect.push_row(ArrayView::from(&[x1, y1])).unwrap();
+        rect.push_row(ArrayView::from(&[x1, y0])).unwrap();
+
+        // println!("rect1: ({x0}, {y0}), ({x1}, {y1})");
+        // println!("rect: {rect:?}");
+
+        let (inside, on_boundry) = inpoly2(&rect, &array, None, None);
+        //            println!("Check: inside: {inside:?}");
+
+        // proceed if all inside
+        let inside2 = inside.iter().fold(true, |acc, e| acc && *e);
+        // let boundry = on_boundry.iter().fold(false, |acc, e| acc || *e);
+        //            println!("Final inside: {inside}");
+
+        if inside2 {
+            println!(
+                "Found max area: {area} - ({x0}, {y0}), ({x1}, {y1}) - {inside}, {on_boundry}, {iter}"
+            );
+            max_area = area;
+            break;
+        }
+    }
+
+    Ok(max_area)
 }
 
-fn prob2(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
-    let points = data_init(prob_file)?;
+fn data_init2(prob_file: &str) -> Result<Vec<(f64, f64)>, Box<dyn std::error::Error>> {
+    let tile_point_reader = TilePointReader::new(prob_file)?;
 
-    let mut lines = Vec::new();
-    let p0 = points[0];
-    let mut last_point = p0;
-    for point in &points[1..] {
-        // sanity
-        if (last_point.location.0 != point.location.0)
-            && (last_point.location.1 != point.location.1)
-        {
-            panic!("Point topology errror: {last_point:?}, {point:?}");
-        }
-        let line = Line {
-            p0: last_point,
-            p1: *point,
-        };
-        lines.push(line);
-        last_point = *point;
+    let mut points = Vec::new();
+    for (x, y) in tile_point_reader {
+        // println!("tp: {tile_point:?}");
+        points.push((x, y));
     }
-    // wrap around
-    let line = Line {
-        p0: last_point,
-        p1: p0,
-    };
-    lines.push(line);
 
-    println!("Lines: {lines:?}");
+    points.push(points[0]);
+    Ok(points)
+}
 
-    let max_area = 0;
+fn prob3(prob_file: &str) -> Result<f64, Box<dyn std::error::Error>> {
+    let mut points = data_init2(prob_file)?;
+    let mut max_area = 0.;
+
+    let line_string: LineString<f64> = points.clone().into();
+    //    println!("line_string: {line_string:?}");
+    let poly = Polygon::new(line_string, vec![]);
+    //    println!("poly: {poly:?}");
+
+    //    let total_calcs = points.len() * (points.len() - 1);
+    //    println!("Total calcs: {total_calcs}");
+    //    let mut iter = 0;
+    let mut areas = Vec::new();
+    for i in 0..(points.len() - 1) {
+        for j in (i + 1)..points.len() {
+            //            if (iter % 1000) == 0 {
+            //                println!("Calc: {iter}/{total_calcs}");
+            //            }
+            //            iter += 1;
+            let (x0, y0) = points[i];
+            let (x1, y1) = points[j];
+
+            let delta_x = delta(x0, x1);
+            let delta_y = delta(y0, y1);
+            let area = delta_x * delta_y;
+            areas.push((x0, y0, x1, y1, area));
+        }
+    }
+
+    areas.sort_by(|a, b| {
+        let (_, _, _, _, a1) = a;
+        let (_, _, _, _, b1) = b;
+        let a1 = *a1 as usize;
+        let b1 = *b1 as usize;
+        b1.cmp(&a1)
+    });
+
+    //    println!("areas: {areas:?}");
+
+    //    let total_calcs = areas.len();
+    let mut iter = 0;
+    //    println!("Total calcs2: {total_calcs}");
+    for (x0, y0, x1, y1, area) in areas {
+        //        if (iter % 1000) == 0 {
+        //            println!("Calc: {iter}/{total_calcs}");
+        //        }
+        iter += 1;
+        // test if rectangle defined by points is inside the boundary
+        // create array of points to check
+        let mut rect = Vec::new();
+        rect.push(point!(x: x0, y: y0));
+        rect.push(point!(x: x0, y: y1));
+        rect.push(point!(x: x1, y: y1));
+        rect.push(point!(x: x1, y: y0));
+
+        /*
+                println!("rect: {rect:?}");
+
+                for p in &rect {
+                    let contains = poly.contains(p);
+                    println!("contains: p:{p:?}, {contains}");
+                    let intersects = poly.intersects(p);
+                    println!("intersects: p:{p:?}, {intersects}");
+                }
+        */
+        let inside = rect.iter().fold(true, |acc, e| acc && poly.intersects(e));
+
+        if inside {
+            println!("Found max area: {area} - ({x0}, {y0}), ({x1}, {y1}) - {inside}, {iter}");
+            max_area = area;
+            break;
+        }
+    }
+
     Ok(max_area)
 }
 
@@ -136,6 +260,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total = prob2(&input_file)?;
     println!("Part 2 - total: {total}");
 
+    let total = prob3(&input_file)?;
+    println!("Part 3 - total: {total}");
+
     Ok(())
 }
 
@@ -145,11 +272,16 @@ mod test {
 
     #[test]
     fn check_prob1() {
-        assert_eq!(prob1("sample.txt").unwrap(), 50);
+        assert_eq!(prob1("sample.txt").unwrap(), 50.);
     }
 
     #[test]
     fn check_prob2() {
-        assert_eq!(prob2("sample.txt").unwrap(), 25272);
+        assert_eq!(prob2("sample.txt").unwrap(), 24.);
+    }
+
+    #[test]
+    fn check_prob3() {
+        assert_eq!(prob3("sample.txt").unwrap(), 24.);
     }
 }
