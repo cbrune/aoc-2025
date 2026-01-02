@@ -1,0 +1,10 @@
+part1:
+
+Things:
+- machines, described by one line, each with:
+-- indicator lights (on/off)
+-- list of button -> indicator light map
+-- list of indicator light joltage requirements
+
+- find few button presses for each machine
+
