@@ -5,24 +5,49 @@ use std::io::{self, BufRead};
 #[derive(Clone)]
 struct Machine {
     on_state: usize,
-    state: usize,
     buttons: Vec<usize>,
     joltages: Vec<usize>,
 }
 
 impl std::fmt::Debug for Machine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "on_state: {:#09b}, state: {:#09b}, buttons: [",
-            self.on_state, self.state
-        )?;
+        write!(f, "on_state: {:#09b}, buttons: [", self.on_state)?;
         for button in &self.buttons {
             write!(f, "{:#09b}, ", button)?;
         }
         write!(f, "], joltages: {:?}", self.joltages)?;
 
         Ok(())
+    }
+}
+
+impl Machine {
+    fn activate(&self) -> usize {
+        // makes no sense to press a button twice -> NOP
+        let mut on_presses = Vec::new();
+        for mask in 1..(1 << self.buttons.len()) {
+            let mut state = 0;
+
+            // println!("Trying mask: {mask:#b}");
+            for i in 0..self.buttons.len() {
+                if (mask & (1 << i)) == (1 << i) {
+                    state ^= self.buttons[i];
+                    // println!(
+                    //     "After applying button[{i}]: {:#09b}, state: {state:#09b}",
+                    //     self.buttons[i]
+                    // );
+                }
+            }
+
+            if state == self.on_state {
+                on_presses.push((mask as usize).count_ones());
+                continue;
+            }
+        }
+
+        // println!("pressed: {on_presses:?}: machine: {self:?}");
+        on_presses.sort();
+        on_presses[0] as usize
     }
 }
 
@@ -104,7 +129,6 @@ impl Iterator for MachineReader {
 
             Machine {
                 on_state,
-                state: 0,
                 buttons,
                 joltages,
             }
@@ -123,18 +147,20 @@ fn data_init(prob_file: &str) -> Result<Vec<Machine>, Box<dyn std::error::Error>
     Ok(machines)
 }
 
-fn prob1(prob_file: &str) -> Result<f64, Box<dyn std::error::Error>> {
+fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     let machines = data_init(prob_file)?;
-    let mut total = 0.;
+    let mut total = 0;
 
-    println!("machines: {machines:#?}");
+    for machine in &machines {
+        total += machine.activate();
+    }
 
     Ok(total)
 }
 
-fn prob2(prob_file: &str) -> Result<f64, Box<dyn std::error::Error>> {
+fn prob2(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     let machines = data_init(prob_file)?;
-    let mut total = 0.;
+    let mut total = 0;
 
     println!("machines: {machines:#?}");
 
@@ -161,11 +187,11 @@ mod test {
 
     #[test]
     fn check_prob1() {
-        assert_eq!(prob1("sample.txt").unwrap(), 50.);
+        assert_eq!(prob1("sample.txt").unwrap(), 7);
     }
 
     #[test]
     fn check_prob2() {
-        assert_eq!(prob2("sample.txt").unwrap(), 24.);
+        assert_eq!(prob2("sample.txt").unwrap(), 24);
     }
 }
