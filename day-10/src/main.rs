@@ -2,6 +2,11 @@
 use std::fs::File;
 use std::io::{self, BufRead};
 
+use good_lp::{
+    default_solver, variable, variables, Expression, ProblemVariables, Solution, SolverModel,
+};
+use minilp::{ComparisonOp, OptimizationDirection, Problem};
+
 #[derive(Clone)]
 struct Machine {
     on_state: usize,
@@ -48,6 +53,74 @@ impl Machine {
         // println!("pressed: {on_presses:?}: machine: {self:?}");
         on_presses.sort();
         on_presses[0] as usize
+    }
+
+    fn joltage(&self) -> f64 {
+        // minimize button presses to achieve desired joltages
+        let mut problem = Problem::new(OptimizationDirection::Minimize);
+        let mut vars = Vec::new();
+
+        // add the variables
+        for _button in &self.buttons {
+            let var = problem.add_var(1.0, (0.0, f64::INFINITY));
+            vars.push(var);
+        }
+
+        // add the constraints
+        for (i, joltage) in self.joltages.iter().enumerate() {
+            let mut equation = Vec::new();
+            for (j, button) in self.buttons.iter().enumerate() {
+                if (button & (1 << i)) == (1 << i) {
+                    // this button counts towards this joltage
+                    equation.push((vars[j], 1.0));
+                }
+            }
+            // add constraint
+            problem.add_constraint(&equation, ComparisonOp::Eq, *joltage as f64);
+        }
+
+        let solution = problem.solve().unwrap();
+        println!("Solution: {}", solution.objective() as usize);
+        for (i, var) in vars.iter().enumerate() {
+            println!("  Sol[{i}]: {}", solution[*var]);
+        }
+        solution.objective()
+    }
+
+    fn joltage2(&self) -> f64 {
+        // minimize button presses to achieve desired joltages
+        let mut problem = ProblemVariables::new();
+        let mut vars = Vec::new();
+
+        // Create the variables and objective function
+        for _button in &self.buttons {
+            let var = problem.add(variable().integer().min(0));
+            vars.push(var);
+        }
+        let objective: Expression = vars.iter().sum();
+        let mut model = problem.minimise(objective).using(default_solver);
+
+        // add the constraints
+        for (i, joltage) in self.joltages.iter().enumerate() {
+            let mut expression = Expression::with_capacity(self.buttons.len());
+            for (j, button) in self.buttons.iter().enumerate() {
+                if (button & (1 << i)) == (1 << i) {
+                    // this button counts towards this joltage
+                    expression += vars[j];
+                }
+            }
+            // add constraint
+            model.add_constraint(expression.eq(*joltage as u32));
+        }
+
+        let solution = model.solve().unwrap();
+        let mut total = 0.;
+        for (_i, var) in vars.iter().enumerate() {
+            // println!("Solution[{i}]: {}", solution.value(*var));
+            total += solution.value(*var);
+        }
+
+        total
     }
 }
 
@@ -158,11 +231,24 @@ fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     Ok(total)
 }
 
-fn prob2(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
+fn prob2(prob_file: &str) -> Result<f64, Box<dyn std::error::Error>> {
     let machines = data_init(prob_file)?;
-    let mut total = 0;
+    let mut total = 0.;
 
-    println!("machines: {machines:#?}");
+    for machine in &machines {
+        total += machine.joltage();
+    }
+
+    Ok(total)
+}
+
+fn prob3(prob_file: &str) -> Result<f64, Box<dyn std::error::Error>> {
+    let machines = data_init(prob_file)?;
+    let mut total = 0.;
+
+    for machine in &machines {
+        total += machine.joltage2();
+    }
 
     Ok(total)
 }
@@ -178,6 +264,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total = prob2(&input_file)?;
     println!("Part 2 - total: {total}");
 
+    let total = prob3(&input_file)?;
+    println!("Part 3 - total: {total}");
+
     Ok(())
 }
 
@@ -192,6 +281,11 @@ mod test {
 
     #[test]
     fn check_prob2() {
-        assert_eq!(prob2("sample.txt").unwrap(), 24);
+        assert_eq!(prob2("sample.txt").unwrap(), 33.);
+    }
+
+    #[test]
+    fn check_prob3() {
+        assert_eq!(prob3("sample.txt").unwrap(), 33.);
     }
 }

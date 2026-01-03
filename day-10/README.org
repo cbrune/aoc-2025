@@ -8,3 +8,8 @@ Things:
 
 - find few button presses for each machine
 
+part2:
+
+ILP
+
+vars = 1 per button
