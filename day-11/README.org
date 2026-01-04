@@ -1,0 +1,8 @@
+part1:
+
+Compute paths from you -> out
+
+objects:
+- device
+- path (list of other devices)
+
