@@ -73,6 +73,10 @@ fn data_init(
         }
     }
 
+    // Add "out" last
+    let out = "out".to_string();
+    devices.insert(Device { id: out }, Vec::new());
+
     println!("max_outputs: {max_outputs:?}");
 
     Ok((head, devices))
@@ -105,119 +109,50 @@ fn prob1(prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     Ok(paths)
 }
 
-fn traverse2(
-    dac_paths: usize,
-    fft_paths: usize,
-    node: (&Device, &Vec<Device>),
+#[derive(Debug, Clone, Default)]
+struct CacheItem {
+    found_dac: bool,
+    found_fft: bool,
+}
+
+fn traverse2<'a>(
+    current: &Device,
+    cache: &mut HashMap<String, usize>,
     map: &HashMap<Device, Vec<Device>>,
     mut found_dac: bool,
     mut found_fft: bool,
+    //    path_str: String,
 ) -> usize {
-    // println!("traverse: node:{node:?}");
+    // println!("t2: node:{in_node:?}");
 
-    let mut paths = 0;
-    for node in node.1 {
-        if node.id == "out" {
-            if found_dac && found_fft {
-                println!("out: found both");
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-        if node.id == "dac" {
-            found_dac = found_dac || true;
-            if found_dac && found_fft {
-                // early exit
-                println!("early exit");
-                paths += dac_paths;
-                continue;
-            }
-        } else if node.id == "fft" {
-            found_fft = found_fft || true;
-            if found_dac && found_fft {
-                // early exit
-                println!("early exit");
-                paths += fft_paths;
-                continue;
-            }
-        }
-        let outputs = map.get(node).expect("node not found");
-        paths += traverse2(
-            dac_paths,
-            fft_paths,
-            (node, outputs),
-            map,
-            found_dac,
-            found_fft,
-        );
-    }
-
-    paths
-}
-
-fn traverse3(
-    nodes: &Vec<usize>,
-    lut: &Vec<Vec<usize>>,
-    dac_id: usize,
-    dac_paths: usize,
-    fft_id: usize,
-    fft_paths: usize,
-    mut found_dac: bool,
-    mut found_fft: bool,
-) -> usize {
-    let mut paths = 0;
-    // println!("t3: inspecting nodes: {nodes:?}");
-    for node in nodes {
-        if *node == lut.len() - 1 {
-            if found_dac && found_fft {
-                println!("out: found both");
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-
-        if *node == dac_id {
-            found_dac = found_dac || true;
-
-            if found_dac && found_fft {
-                // early exit
-                println!("early exit");
-                paths += dac_paths;
-                continue;
-            }
-        } else if *node == fft_id {
-            found_fft = found_fft || true;
-
-            if found_dac && found_fft {
-                // early exit
-                println!("early exit");
-                paths += fft_paths;
-                continue;
-            }
-        }
-
-        let outputs = &lut[*node];
-        paths += traverse3(
-            outputs, lut, dac_id, dac_paths, fft_id, fft_paths, found_dac, found_fft,
-        );
-    }
-
-    paths
-}
-
-fn traverse4(nodes: &Vec<usize>, lut: &Vec<Vec<usize>>) -> usize {
-    let mut paths = 0;
-    for node in nodes {
-        if *node == lut.len() - 1 {
+    if current.id == "out" {
+        if found_dac && found_fft {
+            println!("Found both: start:{current:?}");
             return 1;
         }
-
-        let outputs = &lut[*node];
-        paths += traverse4(outputs, lut);
     }
 
+    let key = format!("{}{}{}", current.id, found_dac, found_fft);
+    if let Some(history) = cache.get(&key) {
+        println!(
+            "t2:  cache hit:{}{}{}: {}",
+            current.id, found_dac, found_fft, history
+        );
+        return *history;
+    }
+
+    let mut paths = 0;
+
+    for node in map.get(current).expect("Node not found") {
+        paths += traverse2(
+            node,
+            cache,
+            map,
+            found_dac || (node.id == "dac"),
+            found_fft || (node.id == "fft"),
+        );
+    }
+    cache.insert(key, paths);
     paths
 }
 
@@ -225,78 +160,17 @@ fn prob2(mut prob_file: &str) -> Result<usize, Box<dyn std::error::Error>> {
     if prob_file == "sample.txt" {
         prob_file = "sample2.txt";
     }
-    let (head, devices) = data_init(prob_file, "svr")?;
-
-    // convert devices into array of usize with a LUT for name->index;
-    let mut name_map = HashMap::new();
-    let mut lut = Vec::new();
-    for key in devices.keys() {
-        println!("Adding key: {} for index: {}", key.id, lut.len());
-        name_map.insert(&key.id, lut.len());
-        lut.push(Vec::new());
-    }
-    let out = "out".to_string();
-    name_map.insert(&out, lut.len());
-    lut.push(Vec::new());
-
-    for (key, val) in devices.iter() {
-        let index = name_map.get(&key.id).unwrap();
-        for output in val {
-            let out_id = name_map.get(&output.id).unwrap();
-            println!(
-                "Adding output['{}'] = {} for source['{}'] = {}",
-                output.id, out_id, key.id, index,
-            );
-            lut[*index].push(*out_id);
-        }
-    }
-
-    println!("lut: {lut:?}");
-
+    let (head, mut devices) = data_init(prob_file, "svr")?;
     let head = head.expect("Empty head node");
-    // println!("Head: {head:#?}");
+    let h2 = head.clone();
 
-    let mut head_node = Vec::new();
-    for output in &head.1 {
-        let out_id = name_map.get(&output.id).unwrap();
-        head_node.push(*out_id);
-    }
+    devices.insert(h2.0, h2.1);
 
-    let dac = "dac".to_string();
-    let dac_id = name_map.get(&dac).unwrap();
-    let fft = "fft".to_string();
-    let fft_id = name_map.get(&fft).unwrap();
+    let mut cache = HashMap::new();
 
-    println!("dac_id: {dac_id}");
-    println!("fft_id: {fft_id}");
+    let paths = traverse2(&head.0, &mut cache, &devices, false, false);
 
-    // how many paths from "dac" -> "out"
-    let mut lut_minus_dac = lut.clone();
-    let dac_devices = lut_minus_dac.remove(*dac_id);
-    println!("lut-len:{}, lut-dac-len:{}", lut.len(), lut_minus_dac.len());
-    let dac_paths = traverse4(&dac_devices, &lut_minus_dac);
-    println!("dac_paths: {dac_paths}");
-
-    // how many paths from fft -> out
-    let mut lut_minus_fft = lut.clone();
-    let fft_devices = lut_minus_fft.remove(*fft_id);
-    let fft_paths = traverse4(&fft_devices, &lut_minus_fft);
-    println!("fft_paths: {fft_paths}");
-
-    let paths = traverse3(
-        &head_node, &lut, *dac_id, dac_paths, *fft_id, fft_paths, false, false,
-    );
-
-    /*
-        let paths = traverse3(
-            dac_paths,
-            fft_paths,
-            (&head.0, &head.1),
-            &devices,
-            false,
-            false,
-        );
-    */
+    println!("p2: paths: {paths}");
     Ok(paths)
 }
 
