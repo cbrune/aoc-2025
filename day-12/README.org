@@ -1,0 +1,14 @@
+part1:
+
+Compute paths from you -> out
+
+objects:
+- device
+- path (list of other devices)
+
+add a cache ... just a vector, same length as name map
+
+out only appears by itself ... when processing out, no need to "continue".
+
+return visit info on the stack ()
+
